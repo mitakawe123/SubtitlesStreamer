@@ -1,0 +1,10 @@
+.idea
+bin/
+obj/
+artifacts/
+/packages/
+riderModule.iml
+/_ReSharper.Caches/
+ggml-base.bin
+.idea
+models/

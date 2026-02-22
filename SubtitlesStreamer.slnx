@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="SubtitlesStreamer.Application/SubtitlesStreamer.Application.csproj" />
+  <Project Path="SubtitlesStreamer.Domain/SubtitlesStreamer.Domain.csproj" />
+  <Project Path="SubtitlesStreamer/SubtitlesStreamer.csproj" />
+</Solution>
