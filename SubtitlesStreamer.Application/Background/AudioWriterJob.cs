@@ -10,26 +10,17 @@ using SubtitlesStreamer.Domain.DTOs;
 namespace SubtitlesStreamer.Application.Background;
 
 public sealed class AudioWriterJob(
-    ChannelWriter<AudioDto> writer,
+    ChannelWriter<AudioDto> audioWriter,
     IFfmpegProcessorService ffmpegProcessorService,
     ILogger<AudioWriterJob> logger) : BackgroundService
 {
     private const int ChunkBytes = 32768; // 32 KB
 
-    private readonly ChannelWriter<AudioDto> _writer = writer;
-    private readonly IFfmpegProcessorService _ffmpegProcessorService = ffmpegProcessorService;
-    private readonly ILogger<AudioWriterJob> _logger = logger;
-    
     private readonly byte[] _byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
     private readonly float[] _floatBuffer = ArrayPool<float>.Shared.Rent(ChunkBytes / 4);
-    
-    private Stream? _stream;
-    
-    public override Task StartAsync(CancellationToken cancellationToken)
-    {
-        _stream = _ffmpegProcessorService.InitBaseStream();
-        return Task.CompletedTask;
-    }
+
+    private readonly ChannelWriter<AudioDto> _audioWriter = audioWriter;
+    private readonly Stream _stream = ffmpegProcessorService.InitBaseStream();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -39,13 +30,12 @@ public sealed class AudioWriterJob(
             {
                 try
                 {
-                    if (_stream is not null)
-                        await _stream.ReadExactlyAsync(_byteBuffer.AsMemory(0, ChunkBytes), stoppingToken);
+                    await _stream.ReadExactlyAsync(_byteBuffer.AsMemory(0, ChunkBytes), stoppingToken);
 
                     var floatSpan = MemoryMarshal.Cast<byte, float>(_byteBuffer.AsSpan(0, ChunkBytes));
                     floatSpan.CopyTo(_floatBuffer.AsSpan(0, floatSpan.Length));
 
-                    await _writer.WriteAsync(new AudioDto(_floatBuffer), stoppingToken);
+                    await _audioWriter.WriteAsync(new AudioDto(_floatBuffer), stoppingToken);
                 }
                 catch (EndOfStreamException)
                 {
@@ -55,7 +45,7 @@ public sealed class AudioWriterJob(
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("[ERROR WRITER] {ex}", ex);
+            logger.LogInformation("[ERROR WRITER] {ex}", ex);
         }
         finally
         {

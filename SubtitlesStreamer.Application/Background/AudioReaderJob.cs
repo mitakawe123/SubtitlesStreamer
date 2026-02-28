@@ -16,13 +16,12 @@ public sealed class AudioReaderJob(
     ILogger<AudioReaderJob> logger,
     IPlaywrightService playwrightService) : BackgroundService
 {
-    private const GgmlType GgmlBaseType = GgmlType.Base;
+    private const string LanguageModelsFolder = "models";
     private const string ModelFileName = "ggml-base.bin";
 
-    private readonly string _modelsPath = Path.Combine(AppContext.BaseDirectory, "models");
+    private readonly string _modelsPath = Path.Combine(AppContext.BaseDirectory, LanguageModelsFolder);
     private readonly string _factoryPath = Path.Combine(AppContext.BaseDirectory, ModelFileName);
 
-    
     private readonly ChannelReader<AudioDto> _audioReader = audioReader;
     private readonly ChannelReader<LanguageContext> _languageReader = languageReader;
     private readonly ILogger<AudioReaderJob> _logger = logger;
@@ -34,11 +33,14 @@ public sealed class AudioReaderJob(
         {
             try
             {
-                if (!File.Exists(ModelFileName))
-                    await DownloadModel(ModelFileName, GgmlBaseType);
+                if (!File.Exists(_factoryPath))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(_factoryPath)!);
+                    await DownloadModel(_factoryPath);
+                }
+
                 using var whisperLogger = LogProvider.AddConsoleLogging(WhisperLogLevel.Debug);
                 using var factory = WhisperFactory.FromPath(_factoryPath);
-                
                 await using var processor = factory.CreateBuilder()
                     .WithLanguage(languageContext.SourceLanguage)
                     .Build();
@@ -55,9 +57,6 @@ public sealed class AudioReaderJob(
                             continue;
 
                         var translatedResult = translateService.Translate(segment.Text);
-                        // _logger.LogInformation($"[ORIGINAL RESULT] {result.Probability} {result.Start}->{result.End}: {result.Text} ");
-                        // _logger.LogInformation($"[TRANSLATED RESULT] {translatedResult}");
-
                         await _playwrightService.ShowTranslatePopupTextAsync(translatedResult);
                     }
                 }
@@ -69,11 +68,11 @@ public sealed class AudioReaderJob(
         }
     }
     
-    private static async Task DownloadModel(string fileName, GgmlType ggmlType)
+    private static async Task DownloadModel(string filePath)
     {
-        Console.WriteLine($"Downloading Model {fileName}");
-        await using var modelStream = await WhisperGgmlDownloader.Default.GetGgmlModelAsync(ggmlType);
-        await using var fileWriter = File.OpenWrite(fileName);
+        Console.WriteLine($"Downloading Model {filePath}");
+        await using var modelStream = await WhisperGgmlDownloader.Default.GetGgmlModelAsync(GgmlType.Base);
+        await using var fileWriter = File.OpenWrite(filePath);
         await modelStream.CopyToAsync(fileWriter);
     }
 }
