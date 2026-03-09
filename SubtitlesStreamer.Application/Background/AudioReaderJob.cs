@@ -40,7 +40,7 @@ public sealed class AudioReaderJob(
                 }
 
                 using var whisperLogger = LogProvider.AddConsoleLogging(WhisperLogLevel.Debug);
-                using var factory = WhisperFactory.FromPath(_factoryPath);
+                using var factory = WhisperFactory.FromPath(_factoryPath);                          
                 await using var processor = factory.CreateBuilder()
                     .WithLanguage(languageContext.SourceLanguage)
                     .Build();

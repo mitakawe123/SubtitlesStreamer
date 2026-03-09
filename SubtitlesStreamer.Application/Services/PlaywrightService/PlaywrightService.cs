@@ -6,6 +6,7 @@ namespace SubtitlesStreamer.Application.Services.PlaywrightService;
 public class PlaywrightService : IPlaywrightService
 {
     private readonly IPage _page;
+    private IPage? _popupPage = null;
     
     public PlaywrightService()
     {
@@ -57,65 +58,71 @@ public class PlaywrightService : IPlaywrightService
         await _page.WaitForTimeoutAsync(2_000);    
     }
 
-  
     public async Task ShowTranslatePopupTextAsync(string translatedResult)
     {
-        var popup = await CreatePopupTranslateAsync();
+        var popup = await GetOrCreatePopupAsync();
+
         await popup.EvaluateAsync("""
-                                      (args) => {
-                                          if (window.__subtitleRenderer) {
-                                              window.__subtitleRenderer.show(args.text, args.duration);
-                                          } else if (window.__myPopup && window.__myPopup.__subtitleRenderer) {
-                                              // fallback to popup context
-                                              window.__myPopup.__subtitleRenderer.show(args.text, args.duration);
-                                          }
-                                      }
-                                  """, new { text = translatedResult, duration = 1500 });    
+            (args) => {
+                if (window.__subtitleRenderer) {
+                    window.__subtitleRenderer.show(args.text, args.duration);
+                }
+            }
+        """, new { text = translatedResult, duration = 1500 });
     }
-    
-    private async Task<IPage> CreatePopupTranslateAsync()
+
+    private async Task<IPage> GetOrCreatePopupAsync()
     {
-        var popup = await _page.RunAndWaitForPopupAsync(async () =>
+        if (_popupPage is { IsClosed: false })
+            return _popupPage;
+
+        // Step 1: just open the popup
+        _popupPage = await _page.RunAndWaitForPopupAsync(async () =>
         {
-            // Open the popup and immediately run JS inside the main page context
             await _page.EvaluateAsync("""
-                                         () => {
-                                             if (!window.__myPopup || window.__myPopup.closed) {
-                                                 window.__myPopup = window.open('', 'myReusablePopup', 'width=600,height=200');
-
-                                                 // Wait for the popup document to be available
-                                                 const doc = window.__myPopup.document;
-
-                                                 // Create container
-                                                 let container = doc.getElementById('text');
-                                                 if (!container) {
-                                                     container = doc.createElement('div');
-                                                     container.id = 'text';
-                                                     container.style.fontSize = '22px';
-                                                     container.style.textAlign = 'center';
-                                                     container.style.marginTop = '40px';
-                                                     container.style.transition = 'opacity 0.4s';
-                                                     container.style.opacity = '0';
-                                                     doc.body.appendChild(container);
-                                                 }
-
-                                                 // Define subtitle renderer inside the popup context
-                                                 window.__myPopup.__subtitleRenderer = {
-                                                     show(text, duration = 3000) {
-                                                         container.textContent = text;
-                                                         container.style.opacity = '1';
-                                                         setTimeout(() => {
-                                                             container.style.opacity = '0';
-                                                             setTimeout(() => container.textContent = '', 400);
-                                                         }, duration);
-                                                     }
-                                                 };
-                                             }
-                                         }
-                                     """);
+                () => {
+                    window.open('', 'myReusablePopup', 'width=600,height=200');
+                }
+            """);
         });
 
-        await popup.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-        return popup;
+        await _popupPage.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+
+        await _popupPage.EvaluateAsync("""
+            () => {
+                document.body.style.backgroundColor = '#000';
+                document.body.style.margin = '0';
+
+                let container = document.getElementById('text');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'text';
+                    container.style.fontSize = '22px';
+                    container.style.color = '#fff';
+                    container.style.textAlign = 'center';
+                    container.style.marginTop = '40px';
+                    container.style.transition = 'opacity 0.4s';
+                    container.style.opacity = '0';
+                    document.body.appendChild(container);
+                }
+
+                // Define renderer on THIS window (popup window)
+                window.__subtitleRenderer = {
+                    show(text, duration = 3000) {
+                        container.textContent = text;
+                        container.style.opacity = '1';
+                        clearTimeout(window.__subtitleTimer);
+                        window.__subtitleTimer = setTimeout(() => {
+                            container.style.opacity = '0';
+                            setTimeout(() => container.textContent = '', 400);
+                        }, duration);
+                    }
+                };
+            }
+        """);
+
+        _popupPage.Close += (_, _) => _popupPage = null;
+
+        return _popupPage;
     }
 }
