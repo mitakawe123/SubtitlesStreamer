@@ -1,5 +1,3 @@
-using Microsoft.Playwright;
-
 namespace SubtitlesStreamer.Application.Services.PlaywrightService;
 
 public interface IPlaywrightService

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Threading.Channels;
 using BergamotTranslatorSharp;
 using Microsoft.Extensions.Hosting;
@@ -16,6 +17,7 @@ public sealed class AudioReaderJob(
     ILogger<AudioReaderJob> logger,
     IPlaywrightService playwrightService) : BackgroundService
 {
+    private const int PopupFlushSeconds = 15;
     private const string LanguageModelsFolder = "models";
     private const string ModelFileName = "ggml-base.bin";
 
@@ -49,6 +51,10 @@ public sealed class AudioReaderJob(
                     $"{languageContext.SourceLanguage}-{languageContext.TargetLanguage}/{languageContext.SourceLanguage}-{languageContext.TargetLanguage}.yml");
                 using var translateService = new BlockingService(modelPath);
 
+                var translatedTextBuffer = new StringBuilder();
+                using var flushTimer = new PeriodicTimer(TimeSpan.FromSeconds(PopupFlushSeconds));
+                var flushTask = flushTimer.WaitForNextTickAsync(stoppingToken).AsTask();
+
                 await foreach (var floatChunk in _audioReader.ReadAllAsync(stoppingToken))
                 {
                     await foreach (var segment in processor.ProcessAsync(floatChunk.Audio, stoppingToken))
@@ -56,9 +62,17 @@ public sealed class AudioReaderJob(
                         if (string.IsNullOrWhiteSpace(segment.Text) || segment.Text is " [BLANK_AUDIO]")
                             continue;
 
-                        var translatedResult = translateService.Translate(segment.Text);
-                        await _playwrightService.ShowTranslatePopupTextAsync(translatedResult);
+                        translatedTextBuffer.Append(translateService.Translate(segment.Text)).Append(' ');
+                        if (!flushTask.IsCompleted) 
+                            continue;
+                        
+                        await _playwrightService.ShowTranslatePopupTextAsync(translatedTextBuffer.ToString().Trim());
+                        translatedTextBuffer.Clear();
+                        flushTask = flushTimer.WaitForNextTickAsync(stoppingToken).AsTask();
                     }
+                    
+                    if (translatedTextBuffer.Length > 0)
+                        await _playwrightService.ShowTranslatePopupTextAsync(translatedTextBuffer.ToString().Trim());
                 }
             }
             catch (Exception ex)

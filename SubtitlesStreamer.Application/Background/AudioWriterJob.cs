@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
@@ -15,42 +14,62 @@ public sealed class AudioWriterJob(
     ILogger<AudioWriterJob> logger) : BackgroundService
 {
     private const int ChunkBytes = 32768; // 32 KB
-
-    private readonly byte[] _byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
-    private readonly float[] _floatBuffer = ArrayPool<float>.Shared.Rent(ChunkBytes / 4);
+    private const int MaxRetries = 5;
+    private const int RetryDelayMs = 2000;
 
     private readonly ChannelWriter<AudioDto> _audioWriter = audioWriter;
-    private readonly Stream _stream = ffmpegProcessorService.InitBaseStream();
+    private readonly ILogger<AudioWriterJob> _logger = logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        int attempt = 0;
+
+        while (!stoppingToken.IsCancellationRequested)
         {
-            while (!stoppingToken.IsCancellationRequested)
+            var byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
+            var floatBuffer = ArrayPool<float>.Shared.Rent(ChunkBytes / 4);
+
+            try
             {
-                try
-                {
-                    await _stream.ReadExactlyAsync(_byteBuffer.AsMemory(0, ChunkBytes), stoppingToken);
+                await using var stream = ffmpegProcessorService.InitBaseStream();
+                attempt = 0; // reset on successful stream init
 
-                    var floatSpan = MemoryMarshal.Cast<byte, float>(_byteBuffer.AsSpan(0, ChunkBytes));
-                    floatSpan.CopyTo(_floatBuffer.AsSpan(0, floatSpan.Length));
-
-                    await _audioWriter.WriteAsync(new AudioDto(_floatBuffer), stoppingToken);
-                }
-                catch (EndOfStreamException)
+                while (!stoppingToken.IsCancellationRequested)
                 {
-                    break; // Stream ended
+                    await stream.ReadExactlyAsync(byteBuffer.AsMemory(0, ChunkBytes), stoppingToken);
+                    var floatSpan = MemoryMarshal.Cast<byte, float>(byteBuffer.AsSpan(0, ChunkBytes));
+                    floatSpan.CopyTo(floatBuffer.AsSpan(0, floatSpan.Length));
+                    await _audioWriter.WriteAsync(new AudioDto(floatBuffer), stoppingToken);
                 }
             }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                _logger.LogInformation("[AUDIO WRITER] Graceful shutdown requested, stopping.");
+                break;
+            }
+            catch (EndOfStreamException)
+            {
+                attempt++;
+                _logger.LogWarning("[AUDIO WRITER] Stream ended unexpectedly. Retry {attempt}/{MaxRetries}...", attempt, MaxRetries);
+            }
+            catch (Exception ex)
+            {
+                attempt++;
+                _logger.LogError(ex, "[AUDIO WRITER] Unexpected error. Retry {attempt}/{MaxRetries}...", attempt, MaxRetries);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(byteBuffer, true);
+                ArrayPool<float>.Shared.Return(floatBuffer, true);
+            }
+
+            if (attempt >= MaxRetries)
+            {
+                _logger.LogCritical("[AUDIO WRITER] Max retries ({MaxRetries}) reached. Giving up.", MaxRetries);
+                break;
+            }
+
+            await Task.Delay(RetryDelayMs, stoppingToken);
         }
-        catch (Exception ex)
-        {
-            logger.LogInformation("[ERROR WRITER] {ex}", ex);
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(_byteBuffer,true);
-            ArrayPool<float>.Shared.Return(_floatBuffer,true);
-        }    
     }
 }
