@@ -18,8 +18,6 @@ public sealed class AudioProcessorJob(
     {
         await foreach(var streamContext in _reader.ReadAllAsync(stoppingToken))
         {
-            await Task.Delay(2_000, stoppingToken);
-
             await _playwrightService.InitializeAsync();
             await _playwrightService.OpenSiteAsync(streamContext.Url);
 

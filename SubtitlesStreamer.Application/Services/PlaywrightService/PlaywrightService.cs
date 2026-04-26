@@ -58,12 +58,13 @@ public class PlaywrightService : IPlaywrightService
           }
         """, text);
     }
-    
-    public async Task CommitTextAsync(string text)
+    public async Task CommitTextAsync(string text, int duration = 10_000)
     {
         var popup = await GetOrCreatePopupAsync();
 
-        await popup.EvaluateAsync("(text) => window.__subtitleRenderer?.commit(text)", text);
+        await popup.EvaluateAsync(
+            "([text, duration]) => window.__subtitleRenderer?.commit(text, duration)", 
+            new object[] { text, duration });
     }
     
     private async Task ClickConsentButtonAsync()

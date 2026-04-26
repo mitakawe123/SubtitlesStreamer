@@ -1,7 +1,7 @@
 namespace SubtitlesStreamer.Domain.DTOs;
 
 public sealed record TranslationTask(
-    long SequenceId,
+    ulong SequenceId,
     string Text,
     LanguageContext LanguageContext
 );

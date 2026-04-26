@@ -16,6 +16,8 @@ builder.Services
     .AddChannels()
     .AddBackgroundServices();
 
+builder.Services.AddLibreTranslate(builder.Configuration);
+
 var app = builder.Build();
 
 app.RegisterMiddlewares();

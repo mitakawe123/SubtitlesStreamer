@@ -13,33 +13,41 @@ public sealed class AudioWriterJob(
     IFfmpegProcessorService ffmpegProcessorService,
     ILogger<AudioWriterJob> logger) : BackgroundService
 {
-    private const int ChunkBytes = 32768; // 32 KB
-    private const int MaxRetries = 5;
-    private const int RetryDelayMs = 2000;
+    // Whisper expects 16kHz mono float32
+    // 0.5s * 16000 samples * 4 bytes = 32000 bytes — be explicit
+    private const int SampleRate = 16000;
+    private const float ChunkDurationSeconds = 0.5f;
+    private const int SamplesPerChunk = (int)(SampleRate * ChunkDurationSeconds);
+    private const int ChunkBytes = SamplesPerChunk * sizeof(float);
+    private const int MaxRetries = 3;
+    private const int RetryDelayMs = 1000;
 
     private readonly ChannelWriter<AudioDto> _audioWriter = audioWriter;
+    private readonly IFfmpegProcessorService _ffmpegProcessorService = ffmpegProcessorService;
     private readonly ILogger<AudioWriterJob> _logger = logger;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        int attempt = 0;
+        var attempt = 0;
+        await using var stream = _ffmpegProcessorService.InitBaseStream();
 
         while (!stoppingToken.IsCancellationRequested)
         {
             var byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
-            var floatBuffer = ArrayPool<float>.Shared.Rent(ChunkBytes / 4);
 
             try
             {
-                await using var stream = ffmpegProcessorService.InitBaseStream();
                 attempt = 0; // reset on successful stream init
 
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     await stream.ReadExactlyAsync(byteBuffer.AsMemory(0, ChunkBytes), stoppingToken);
-                    var floatSpan = MemoryMarshal.Cast<byte, float>(byteBuffer.AsSpan(0, ChunkBytes));
-                    floatSpan.CopyTo(floatBuffer.AsSpan(0, floatSpan.Length));
-                    await _audioWriter.WriteAsync(new AudioDto(floatBuffer), stoppingToken);
+                    
+                    var floats = new float[SamplesPerChunk];
+                    MemoryMarshal.Cast<byte, float>(byteBuffer.AsSpan(0, ChunkBytes))
+                        .CopyTo(floats);
+                    
+                    await _audioWriter.WriteAsync(new AudioDto(floats), stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -60,7 +68,6 @@ public sealed class AudioWriterJob(
             finally
             {
                 ArrayPool<byte>.Shared.Return(byteBuffer, true);
-                ArrayPool<float>.Shared.Return(floatBuffer, true);
             }
 
             if (attempt >= MaxRetries)

@@ -1,49 +1,46 @@
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Channels;
-using BergamotTranslatorSharp;
 using SubtitlesStreamer.Domain.DTOs;
 
 namespace SubtitlesStreamer.Domain.Workers;
 
 public sealed class TranslationWorker(
     ChannelReader<TranslationTask> input,
-    ChannelWriter<TranslationResult> output)
+    ChannelWriter<TranslationResult> output,
+    IHttpClientFactory httpClientFactory) : IDisposable
 {
     private readonly ChannelReader<TranslationTask> _input = input;
     private readonly ChannelWriter<TranslationResult> _output = output;
+    private readonly HttpClient _http = httpClientFactory.CreateClient("LibreTranslate");
     
-    private readonly Dictionary<string, BlockingService> _translators = new();
-
     public async Task RunAsync(CancellationToken token)
     {
         await foreach (var task in _input.ReadAllAsync(token))
         {
-            var translator = GetOrCreateTranslator(task.LanguageContext);
-            var translated = translator.Translate(task.Text);
-
-            await _output.WriteAsync(
-                new TranslationResult(task.SequenceId, translated),
-                token
-            );
+            var translated = await TranslateAsync(task, token);
+            await _output.WriteAsync(new TranslationResult(task.SequenceId, translated), token);
         }
     }
 
-    private BlockingService GetOrCreateTranslator(LanguageContext ctx)
+    private async Task<string> TranslateAsync(TranslationTask task, CancellationToken token)
     {
-        var key = $"{ctx.SourceLanguage}-{ctx.TargetLanguage}";
+        var response = await _http.PostAsJsonAsync("/translate", new
+        {
+            q = task.Text,
+            source = task.LanguageContext.SourceLanguage,
+            target = task.LanguageContext.TargetLanguage,
+            format = "text"
+        }, token);
 
-        if (_translators.TryGetValue(key, out var existing))
-            return existing;
+        response.EnsureSuccessStatusCode();
 
-        var modelPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "models",
-            key,
-            $"{key}.yml"
-        );
-
-        var service = new BlockingService(modelPath);
-        _translators[key] = service;
-
-        return service;
+        var result = await response.Content.ReadFromJsonAsync<LibreTranslateResponse>(token);
+        return result!.TranslatedText;
     }
+
+    public void Dispose() => _http.Dispose();
+    
+    private sealed record LibreTranslateResponse(
+        [property: JsonPropertyName("translatedText")] string TranslatedText);
 }

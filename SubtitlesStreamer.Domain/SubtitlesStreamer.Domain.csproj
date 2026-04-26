@@ -4,5 +4,8 @@
       <HintPath>..\..\..\.nuget\packages\bergamottranslatorsharp\0.3.4\lib\net8.0\BergamotTranslatorSharp.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
 </Project>
 

@@ -2,12 +2,14 @@ using System.Diagnostics;
 
 namespace SubtitlesStreamer.Application.Services.FfmpegProcessor;
 
-public class FfmpegProcessorService : IFfmpegProcessorService
+public class FfmpegProcessorService : IFfmpegProcessorService, IAsyncDisposable
 {
+    private Process? _ffmpeg;
+    
     public Stream InitBaseStream()
     {
         var monitorDevice = GetDefaultPulseMonitorDevice();
-        var ffmpegArgs = $"-f pulse -i {monitorDevice} -ac 1 -ar 16000 -f f32le -";
+        var ffmpegArgs = $"-f pulse -i {monitorDevice} -ac 1 -ar 16000 -f f32le -blocksize 32000 -";
 
         var ffmpegInfo = new ProcessStartInfo
         {
@@ -18,11 +20,13 @@ public class FfmpegProcessorService : IFfmpegProcessorService
             UseShellExecute = false
         };
 
-        var ffmpeg = Process.Start(ffmpegInfo)
-                     ?? throw new NullReferenceException("Failed to start ffmpeg");
+        _ffmpeg = Process.Start(ffmpegInfo)
+                  ?? throw new InvalidOperationException("Failed to start ffmpeg");
 
-        _ = Task.Run(() => ffmpeg.StandardError.ReadToEnd());
-        return ffmpeg.StandardOutput.BaseStream;
+        // Drain stderr on a background thread to prevent blocking
+        _ = Task.Run(() => _ffmpeg.StandardError.ReadToEndAsync());
+
+        return _ffmpeg.StandardOutput.BaseStream;
     }
 
     private static string GetDefaultPulseMonitorDevice()
@@ -53,5 +57,20 @@ public class FfmpegProcessorService : IFfmpegProcessorService
         var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
         return output;
+    }
+
+    
+    public async ValueTask DisposeAsync()
+    {
+        if (_ffmpeg is null) return;
+
+        if (!_ffmpeg.HasExited)
+        {
+            _ffmpeg.Kill();
+            await _ffmpeg.WaitForExitAsync();
+        }
+
+        _ffmpeg.Dispose();
+        _ffmpeg = null;
     }
 }

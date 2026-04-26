@@ -1,13 +1,7 @@
-using System.Text;
 using System.Threading.Channels;
-using BergamotTranslatorSharp;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using SubtitlesStreamer.Application.Services.PlaywrightService;
 using SubtitlesStreamer.Domain.DTOs;
 using Whisper.net;
-using Whisper.net.Ggml;
-using Whisper.net.Logger;
 
 namespace SubtitlesStreamer.Application.Background;
 
@@ -25,7 +19,7 @@ public sealed class AudioReaderJob(
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        long seq = 0;
+        ulong seq = 0;
 
         await foreach (var languageContext in _languageReader.ReadAllAsync(stoppingToken))
         {

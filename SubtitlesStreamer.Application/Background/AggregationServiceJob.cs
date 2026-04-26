@@ -15,10 +15,10 @@ public sealed class AggregationServiceJob(
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var buffer = new SortedDictionary<long, string>();
+        var buffer = new SortedDictionary<ulong, string>();
         var textBuffer = new StringBuilder();
 
-        long expected = 0;
+        ulong expected = 0;
 
         var lastRendered = string.Empty;
 
@@ -67,6 +67,7 @@ public sealed class AggregationServiceJob(
         if (textBuffer.Length > 0)
             await Commit(textBuffer);
     }
+    
     private async Task Commit(StringBuilder buffer)
     {
         var text = buffer.ToString().Trim();

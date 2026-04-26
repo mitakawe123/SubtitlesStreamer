@@ -1,3 +1,3 @@
 namespace SubtitlesStreamer.Domain.DTOs;
 
-public sealed record TranslationResult(long SequenceId, string TranslatedText); 
+public sealed record TranslationResult(ulong SequenceId, string TranslatedText); 

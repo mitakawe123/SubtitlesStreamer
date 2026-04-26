@@ -1,6 +1,5 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.DependencyInjection;
-using SubtitlesStreamer.Application.Background;
 using SubtitlesStreamer.Domain.DTOs;
 
 namespace SubtitlesStreamer.Application.Extensions.Channels;
@@ -12,8 +11,16 @@ public static class StreamChannels
         var streamContextChannel = Channel.CreateUnbounded<StreamContext>();
         var languageContextChannel = Channel.CreateUnbounded<LanguageContext>();
         var audioChannel = Channel.CreateUnbounded<AudioDto>();
-        var translationResult = Channel.CreateUnbounded<TranslationResult>();
-        var translationTask = Channel.CreateUnbounded<TranslationTask>();
+        var translationResult = Channel.CreateBounded<TranslationResult>(options: new BoundedChannelOptions(100)
+        {
+            Capacity = 20,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
+        var translationTask = Channel.CreateBounded<TranslationTask>(options: new BoundedChannelOptions(100)
+        {
+            Capacity = 20,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
         
         services
             .AddSingleton(streamContextChannel)
