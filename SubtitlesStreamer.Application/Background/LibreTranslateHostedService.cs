@@ -12,10 +12,10 @@ public sealed class LibreTranslateHostedService(
 {
     private const string ContainerName = "libretranslate";
     private const string ImageName = "libretranslate/libretranslate";
-
-    private readonly DockerClient _docker = new DockerClientConfiguration(
-            new Uri("unix:///var/run/docker.sock"))  // Linux
-        .CreateClient();
+    
+    private readonly DockerClient _docker = CreateDockerClient();
+    
+    private string _loadOnly = string.Empty;
     
     public async Task StartAsync(CancellationToken token)
     {
@@ -23,18 +23,25 @@ public sealed class LibreTranslateHostedService(
             .GetSection("StreamingOptions:SupportedLanguages")
             .Get<string[]>() ?? ["en"];
 
-        var loadOnly = string.Join(",", languages);
+        _loadOnly = string.Join(",", languages);
 
         logger.LogInformation("Ensuring LibreTranslate is ready before app starts...");
 
         await EnsureImageExistsAsync(token);
 
         var containerId = await GetExistingContainerIdAsync(token);
+        logger.LogInformation("Existing container id: {ContainerId}", containerId ?? "null");
 
         if (containerId is not null)
+        {
+            logger.LogInformation("Taking existing container path");
             await EnsureContainerRunningAsync(containerId, token);
+        }
         else
-            await CreateAndStartContainerAsync(loadOnly, token);
+        {
+            logger.LogInformation("Taking create new container path");
+            await CreateAndStartContainerAsync(token);
+        }
     }
 
     private async Task EnsureImageExistsAsync(CancellationToken token)
@@ -75,11 +82,23 @@ public sealed class LibreTranslateHostedService(
 
     private async Task EnsureContainerRunningAsync(string containerId, CancellationToken token)
     {
-        var container = await _docker.Containers.InspectContainerAsync(containerId, token);
+        ContainerInspectResponse container;
+    
+        try
+        {
+            container = await _docker.Containers.InspectContainerAsync(containerId, token);
+        }
+        catch (DockerContainerNotFoundException)
+        {
+            logger.LogWarning("Container {Id} not found, creating a new one...", containerId);
+            await CreateAndStartContainerAsync(token);
+            return;
+        }
 
         if (container.State.Running)
         {
             logger.LogInformation("LibreTranslate container is already running");
+            await WaitUntilReadyAsync(token);
             return;
         }
 
@@ -88,7 +107,7 @@ public sealed class LibreTranslateHostedService(
         await WaitUntilReadyAsync(token);
     }
 
-    private async Task CreateAndStartContainerAsync(string loadOnly, CancellationToken token)
+    private async Task CreateAndStartContainerAsync(CancellationToken token)
     {
         logger.LogInformation("Creating LibreTranslate container...");
 
@@ -96,7 +115,7 @@ public sealed class LibreTranslateHostedService(
         {
             Name = ContainerName,
             Image = ImageName,
-            Cmd = ["--load-only", loadOnly],
+            Cmd = ["--load-only", _loadOnly],
             HostConfig = new HostConfig
             {
                 PortBindings = new Dictionary<string, IList<PortBinding>>
@@ -145,6 +164,19 @@ public sealed class LibreTranslateHostedService(
         }
 
         throw new TimeoutException("LibreTranslate did not become ready within 5 minutes");
+    }
+    
+    private static DockerClient CreateDockerClient()
+    {
+        var desktopSocket = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".docker/desktop/docker.sock");
+
+        var uri = File.Exists(desktopSocket)
+            ? new Uri($"unix://{desktopSocket}")
+            : new Uri("unix:///var/run/docker.sock");
+
+        return new DockerClientConfiguration(uri).CreateClient();
     }
     
     public Task StartedAsync(CancellationToken token) => Task.CompletedTask;

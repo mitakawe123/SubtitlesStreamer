@@ -10,7 +10,7 @@ public sealed class AudioReaderJob(
     ChannelReader<LanguageContext> languageReader,
     ChannelWriter<TranslationTask> taskWriter) : BackgroundService
 {
-    private const string ModelFileName = "ggml-base.bin";
+    private const string ModelFileName = "ggml-small.bin";
     private readonly string _factoryPath = Path.Combine(AppContext.BaseDirectory, ModelFileName);
 
     private readonly ChannelReader<AudioDto> _audioReader = audioReader;

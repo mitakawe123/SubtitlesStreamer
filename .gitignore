@@ -6,5 +6,6 @@ artifacts/
 riderModule.iml
 /_ReSharper.Caches/
 ggml-base.bin
+ggml-large-v3.bin
 .idea
 models/

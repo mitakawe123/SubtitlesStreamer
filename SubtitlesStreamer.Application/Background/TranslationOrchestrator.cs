@@ -10,7 +10,7 @@ public sealed class TranslationOrchestrator(
     ChannelWriter<TranslationResult> resultWriter,
     IHttpClientFactory httpClientFactory) : BackgroundService
 {
-    private const int WorkerCount = 5;
+    private const int WorkerCount = 3;
     
     private readonly ChannelReader<TranslationTask> _taskReader = taskReader;
     private readonly ChannelWriter<TranslationResult> _resultWriter = resultWriter;

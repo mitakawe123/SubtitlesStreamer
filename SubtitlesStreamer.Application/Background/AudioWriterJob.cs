@@ -16,7 +16,7 @@ public sealed class AudioWriterJob(
     // Whisper expects 16kHz mono float32
     // 0.5s * 16000 samples * 4 bytes = 32000 bytes — be explicit
     private const int SampleRate = 16000;
-    private const float ChunkDurationSeconds = 0.5f;
+    private const float ChunkDurationSeconds = 2f;
     private const int SamplesPerChunk = (int)(SampleRate * ChunkDurationSeconds);
     private const int ChunkBytes = SamplesPerChunk * sizeof(float);
     private const int MaxRetries = 3;
@@ -30,11 +30,10 @@ public sealed class AudioWriterJob(
     {
         var attempt = 0;
         await using var stream = _ffmpegProcessorService.InitBaseStream();
+        var byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
-
             try
             {
                 attempt = 0; // reset on successful stream init
