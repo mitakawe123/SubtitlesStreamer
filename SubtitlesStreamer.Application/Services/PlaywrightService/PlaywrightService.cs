@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Hosting;
 using Microsoft.Playwright;
 using SubtitlesStreamer.Domain.Constants;
 
@@ -64,7 +63,7 @@ public class PlaywrightService : IPlaywrightService
     {
         var popup = await GetOrCreatePopupAsync();
 
-        await popup.EvaluateAsync("(text) => window.__subtitleRenderer?.commit(text, 2500)", text);
+        await popup.EvaluateAsync("(text) => window.__subtitleRenderer?.commit(text)", text);
     }
     
     private async Task ClickConsentButtonAsync()
@@ -98,7 +97,7 @@ public class PlaywrightService : IPlaywrightService
         {
             await _page.EvaluateAsync("""
                 () => {
-                    window.open('', 'myReusablePopup', 'width=800,height=400');
+                    window.open('', 'myReusablePopup', 'width=1200,height=500');
                 }
             """);
         });
@@ -118,27 +117,39 @@ public class PlaywrightService : IPlaywrightService
                    container.style.color = '#fff';
                    container.style.textAlign = 'center';
                    container.style.marginTop = '40px';
-                   container.style.transition = 'opacity 0.3s linear';
-                   container.style.opacity = '0';
                    document.body.appendChild(container);
+               }
+
+               let fadeTimer = null;
+               let clearTimer = null;
+
+               function cancelPendingTimers() {
+                   if (fadeTimer !== null)  { clearTimeout(fadeTimer);  fadeTimer = null; }
+                   if (clearTimer !== null) { clearTimeout(clearTimer); clearTimer = null; }
+               }
+
+               function showInstant(text) {
+                   cancelPendingTimers();
+                   container.style.transition = 'none';
+                   container.style.opacity = '1';
+                   container.textContent = text;
                }
 
                window.__subtitleRenderer = {
                    live(text) {
-                       container.textContent = text;
-                       container.style.opacity = '1';
+                       showInstant(text);
                    },
 
-                   commit(text, duration = 6000) {
-                       container.textContent = text;
-                       container.style.opacity = '1';
+                   commit(text, duration = 10000) {
+                       showInstant(text);
 
-                       clearTimeout(window.__subtitleTimer);
-
-                       window.__subtitleTimer = setTimeout(() => {
+                       fadeTimer = setTimeout(() => {
+                           fadeTimer = null;
+                           container.style.transition = 'opacity 0.3s linear';
                            container.style.opacity = '0';
 
-                           setTimeout(() => {
+                           clearTimer = setTimeout(() => {
+                               clearTimer = null;
                                container.textContent = '';
                            }, 300);
                        }, duration);

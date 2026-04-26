@@ -22,7 +22,7 @@ public sealed class AggregationServiceJob(
 
         var lastRendered = string.Empty;
 
-        var liveInterval = TimeSpan.FromMilliseconds(200);
+        var liveInterval = TimeSpan.FromMilliseconds(50);
         var commitInterval = TimeSpan.FromMilliseconds(10_000);
 
         var lastLive = DateTime.UtcNow;

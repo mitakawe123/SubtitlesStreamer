@@ -4,6 +4,12 @@ using SubtitlesStreamer.Application.Extensions.ServiceCollection;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior =
+        BackgroundServiceExceptionBehavior.Ignore;
+});
+
 builder.Services
     .ConfigureServices()
     .AddSettingsOptions(builder.Configuration)
