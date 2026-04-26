@@ -6,5 +6,7 @@ public interface IPlaywrightService
     
     Task OpenSiteAsync(string url);
 
-    Task ShowTranslatePopupTextAsync(string translatedResult);
+    Task UpdateLiveTextAsync(string text);
+    
+    Task CommitTextAsync(string text);
 }

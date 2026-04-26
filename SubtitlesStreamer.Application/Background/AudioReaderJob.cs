@@ -14,79 +14,44 @@ namespace SubtitlesStreamer.Application.Background;
 public sealed class AudioReaderJob(
     ChannelReader<AudioDto> audioReader,
     ChannelReader<LanguageContext> languageReader,
-    ILogger<AudioReaderJob> logger,
-    IPlaywrightService playwrightService) : BackgroundService
+    ChannelWriter<TranslationTask> taskWriter) : BackgroundService
 {
-    private const int PopupFlushSeconds = 15;
-    private const string LanguageModelsFolder = "models";
     private const string ModelFileName = "ggml-base.bin";
-
-    private readonly string _modelsPath = Path.Combine(AppContext.BaseDirectory, LanguageModelsFolder);
     private readonly string _factoryPath = Path.Combine(AppContext.BaseDirectory, ModelFileName);
 
     private readonly ChannelReader<AudioDto> _audioReader = audioReader;
+    private readonly ChannelWriter<TranslationTask> _taskWriter = taskWriter;
     private readonly ChannelReader<LanguageContext> _languageReader = languageReader;
-    private readonly ILogger<AudioReaderJob> _logger = logger;
-    private readonly IPlaywrightService _playwrightService = playwrightService;
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        long seq = 0;
+
         await foreach (var languageContext in _languageReader.ReadAllAsync(stoppingToken))
         {
-            try
+            using var factory = WhisperFactory.FromPath(_factoryPath);
+            await using var processor = factory.CreateBuilder()
+                .WithLanguage(languageContext.SourceLanguage)
+                .Build();
+
+            await foreach (var audio in _audioReader.ReadAllAsync(stoppingToken))
             {
-                if (!File.Exists(_factoryPath))
+                await foreach (var segment in processor.ProcessAsync(audio.Audio, stoppingToken))
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_factoryPath)!);
-                    await DownloadModel(_factoryPath);
+                    if (string.IsNullOrWhiteSpace(segment.Text) || segment.Text.Equals(" [BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    await _taskWriter.WriteAsync(
+                        new TranslationTask(
+                            SequenceId: seq++, 
+                            Text: segment.Text,
+                            LanguageContext: languageContext),
+                        stoppingToken
+                    );
                 }
-
-                using var whisperLogger = LogProvider.AddConsoleLogging(WhisperLogLevel.Debug);
-                using var factory = WhisperFactory.FromPath(_factoryPath);                          
-                await using var processor = factory.CreateBuilder()
-                    .WithLanguage(languageContext.SourceLanguage)
-                    .Build();
-
-                var modelPath = Path.Combine(_modelsPath,
-                    $"{languageContext.SourceLanguage}-{languageContext.TargetLanguage}/{languageContext.SourceLanguage}-{languageContext.TargetLanguage}.yml");
-                using var translateService = new BlockingService(modelPath);
-
-                var translatedTextBuffer = new StringBuilder();
-                using var flushTimer = new PeriodicTimer(TimeSpan.FromSeconds(PopupFlushSeconds));
-                var flushTask = flushTimer.WaitForNextTickAsync(stoppingToken).AsTask();
-
-                await foreach (var floatChunk in _audioReader.ReadAllAsync(stoppingToken))
-                {
-                    await foreach (var segment in processor.ProcessAsync(floatChunk.Audio, stoppingToken))
-                    {
-                        if (string.IsNullOrWhiteSpace(segment.Text) || segment.Text is " [BLANK_AUDIO]")
-                            continue;
-
-                        translatedTextBuffer.Append(translateService.Translate(segment.Text)).Append(' ');
-                        if (!flushTask.IsCompleted) 
-                            continue;
-                        
-                        await _playwrightService.ShowTranslatePopupTextAsync(translatedTextBuffer.ToString().Trim());
-                        translatedTextBuffer.Clear();
-                        flushTask = flushTimer.WaitForNextTickAsync(stoppingToken).AsTask();
-                    }
-                    
-                    if (translatedTextBuffer.Length > 0)
-                        await _playwrightService.ShowTranslatePopupTextAsync(translatedTextBuffer.ToString().Trim());
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogInformation("[ERROR READER] {ex}", ex);
             }
         }
-    }
-    
-    private static async Task DownloadModel(string filePath)
-    {
-        Console.WriteLine($"Downloading Model {filePath}");
-        await using var modelStream = await WhisperGgmlDownloader.Default.GetGgmlModelAsync(GgmlType.Base);
-        await using var fileWriter = File.OpenWrite(filePath);
-        await modelStream.CopyToAsync(fileWriter);
+
+        _taskWriter.Complete();
     }
 }

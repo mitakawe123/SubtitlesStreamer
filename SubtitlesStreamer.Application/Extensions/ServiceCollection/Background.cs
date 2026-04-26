@@ -10,6 +10,8 @@ public static class Background
         return services
             .AddHostedService<AudioProcessorJob>()
             .AddHostedService<AudioReaderJob>()
-            .AddHostedService<AudioWriterJob>();
+            .AddHostedService<AudioWriterJob>()
+            .AddHostedService<AggregationServiceJob>()
+            .AddHostedService<TranslationOrchestrator>();
     }
 }

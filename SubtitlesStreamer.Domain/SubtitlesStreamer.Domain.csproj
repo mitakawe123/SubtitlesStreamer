@@ -1,2 +1,8 @@
-<Project Sdk="Microsoft.NET.Sdk" />
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <Reference Include="BergamotTranslatorSharp">
+      <HintPath>..\..\..\.nuget\packages\bergamottranslatorsharp\0.3.4\lib\net8.0\BergamotTranslatorSharp.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>
 

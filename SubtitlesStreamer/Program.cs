@@ -6,7 +6,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services
     .ConfigureServices()
-    .AddChannelStreamer()
+    .AddSettingsOptions(builder.Configuration)
+    .AddChannels()
     .AddBackgroundServices();
 
 var app = builder.Build();

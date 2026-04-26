@@ -8,7 +8,7 @@ public class PlaywrightService : IPlaywrightService
 {
     private IPage? _page;
     private IPage? _popupPage;
-    private bool _initialized = false;
+    private bool _initialized;
     
     public async Task InitializeAsync()
     {
@@ -48,18 +48,23 @@ public class PlaywrightService : IPlaywrightService
         });
         await ClickConsentButtonAsync();
     }
-
-    public async Task ShowTranslatePopupTextAsync(string translatedResult)
+    
+    public async Task UpdateLiveTextAsync(string text)
     {
         var popup = await GetOrCreatePopupAsync();
 
         await popup.EvaluateAsync("""
-            (args) => {
-                if (window.__subtitleRenderer) {
-                    window.__subtitleRenderer.show(args.text, args.duration);
-                }
-            }
-        """, new { text = translatedResult, duration = 3000 });
+          (text) => {
+              window.__subtitleRenderer?.live(text);
+          }
+        """, text);
+    }
+    
+    public async Task CommitTextAsync(string text)
+    {
+        var popup = await GetOrCreatePopupAsync();
+
+        await popup.EvaluateAsync("(text) => window.__subtitleRenderer?.commit(text, 2500)", text);
     }
     
     private async Task ClickConsentButtonAsync()
@@ -101,37 +106,47 @@ public class PlaywrightService : IPlaywrightService
         await _popupPage.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
 
         await _popupPage.EvaluateAsync("""
-            () => {
-                document.body.style.backgroundColor = '#000';
-                document.body.style.margin = '0';
+           () => {
+               document.body.style.backgroundColor = '#000';
+               document.body.style.margin = '0';
 
-                let container = document.getElementById('text');
-                if (!container) {
-                    container = document.createElement('div');
-                    container.id = 'text';
-                    container.style.fontSize = '22px';
-                    container.style.color = '#fff';
-                    container.style.textAlign = 'center';
-                    container.style.marginTop = '40px';
-                    container.style.transition = 'opacity 0.4s';
-                    container.style.opacity = '0';
-                    document.body.appendChild(container);
-                }
+               let container = document.getElementById('text');
+               if (!container) {
+                   container = document.createElement('div');
+                   container.id = 'text';
+                   container.style.fontSize = '22px';
+                   container.style.color = '#fff';
+                   container.style.textAlign = 'center';
+                   container.style.marginTop = '40px';
+                   container.style.transition = 'opacity 0.3s linear';
+                   container.style.opacity = '0';
+                   document.body.appendChild(container);
+               }
 
-                window.__subtitleRenderer = {
-                    show(text, duration = 3000) {
-                        container.textContent = text;
-                        container.style.opacity = '1';
-                        clearTimeout(window.__subtitleTimer);
-                        window.__subtitleTimer = setTimeout(() => {
-                            container.style.opacity = '0';
-                            setTimeout(() => container.textContent = '', 400);
-                        }, duration);
-                    }
-                };
-            }
-        """);
+               window.__subtitleRenderer = {
+                   live(text) {
+                       container.textContent = text;
+                       container.style.opacity = '1';
+                   },
 
+                   commit(text, duration = 6000) {
+                       container.textContent = text;
+                       container.style.opacity = '1';
+
+                       clearTimeout(window.__subtitleTimer);
+
+                       window.__subtitleTimer = setTimeout(() => {
+                           container.style.opacity = '0';
+
+                           setTimeout(() => {
+                               container.textContent = '';
+                           }, 300);
+                       }, duration);
+                   }
+               };
+           }
+           """);
+        
         _popupPage.Close += (_, _) => _popupPage = null;
 
         return _popupPage;
