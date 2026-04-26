@@ -1,3 +1,3 @@
 namespace SubtitlesStreamer.Domain.DTOs;
 
-public readonly record struct AudioDto(float[] Audio);
+public sealed record AudioDto(byte[] Audio, int SampleRate = 16000, int Channels = 1);

@@ -16,7 +16,9 @@ builder.Services
     .AddChannels()
     .AddBackgroundServices();
 
-builder.Services.AddLibreTranslate(builder.Configuration);
+builder.Services
+    .AddLibreTranslate(builder.Configuration)
+    .AddFasterWhisper(builder.Configuration);
 
 var app = builder.Build();
 

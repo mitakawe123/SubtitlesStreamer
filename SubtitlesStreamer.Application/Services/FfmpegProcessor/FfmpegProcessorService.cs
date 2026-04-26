@@ -9,8 +9,8 @@ public class FfmpegProcessorService : IFfmpegProcessorService, IAsyncDisposable
     public Stream InitBaseStream()
     {
         var monitorDevice = GetDefaultPulseMonitorDevice();
-        var ffmpegArgs = $"-f pulse -i {monitorDevice} -ac 1 -ar 16000 -f f32le -blocksize 32000 -";
-
+        var ffmpegArgs = $"-f pulse -i {monitorDevice} -ac 1 -ar 16000 -f s16le -";
+        
         var ffmpegInfo = new ProcessStartInfo
         {
             FileName = "ffmpeg",

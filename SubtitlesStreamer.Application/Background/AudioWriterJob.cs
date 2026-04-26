@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -13,12 +12,7 @@ public sealed class AudioWriterJob(
     IFfmpegProcessorService ffmpegProcessorService,
     ILogger<AudioWriterJob> logger) : BackgroundService
 {
-    // Whisper expects 16kHz mono float32
-    // 0.5s * 16000 samples * 4 bytes = 32000 bytes — be explicit
-    private const int SampleRate = 16000;
-    private const float ChunkDurationSeconds = 2f;
-    private const int SamplesPerChunk = (int)(SampleRate * ChunkDurationSeconds);
-    private const int ChunkBytes = SamplesPerChunk * sizeof(float);
+    private const int ChunkBytes = 16000 * 3 * sizeof(short);
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 1000;
 
@@ -42,11 +36,10 @@ public sealed class AudioWriterJob(
                 {
                     await stream.ReadExactlyAsync(byteBuffer.AsMemory(0, ChunkBytes), stoppingToken);
                     
-                    var floats = new float[SamplesPerChunk];
-                    MemoryMarshal.Cast<byte, float>(byteBuffer.AsSpan(0, ChunkBytes))
-                        .CopyTo(floats);
+                    var audioBytes = new byte[ChunkBytes];
+                    byteBuffer.AsSpan(0, ChunkBytes).CopyTo(audioBytes);
                     
-                    await _audioWriter.WriteAsync(new AudioDto(floats), stoppingToken);
+                    await _audioWriter.WriteAsync(new AudioDto(audioBytes), stoppingToken);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
