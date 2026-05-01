@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Subtitles Streamer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #0f0f0f;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .card {
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 40px;
+            width: 440px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card-title {
+            font-size: 22px;
+            font-weight: 600;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 13px;
+            color: #aaa;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 8px;
+            border: 1px solid #2a2a2a;
+            background: #111;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus {
+            border-color: #555;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row .field {
+            flex: 1;
+        }
+
+        button {
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background: #2563eb;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            background: #1d4ed8;
+        }
+
+        button:disabled {
+            background: #1e3a6e;
+            color: #6b7280;
+            cursor: not-allowed;
+        }
+
+        #status {
+            font-size: 13px;
+            text-align: center;
+            color: #aaa;
+            min-height: 18px;
+        }
+
+        #status.error   { color: #f87171; }
+        #status.success { color: #4ade80; }
+
+        .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #444;
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto;
+        }
+
+        .spinner.visible { display: block; }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <div class="card-title">Subtitles Streamer</div>
+
+    <div class="field">
+        <label for="url">Stream URL</label>
+        <input id="url" type="text" placeholder="https://..." autocomplete="off" />
+    </div>
+
+    <div class="row">
+        <div class="field">
+            <label for="source">Source language</label>
+            <select id="source"></select>
+        </div>
+        <div class="field">
+            <label for="target">Target language</label>
+            <select id="target"></select>
+        </div>
+    </div>
+
+    <button id="btn" onclick="start()" disabled>Start</button>
+    <div class="spinner" id="spinner"></div>
+    <div id="status"></div>
+</div>
+
+<script>
+    async function loadLanguages() {
+        try {
+            const res = await fetch('/languages');
+            if (!res.ok) throw new Error();
+            const languages = await res.json();
+            populateSelect('source', languages, 'bg');
+            populateSelect('target', languages, 'en');
+            document.getElementById('btn').disabled = false;
+        } catch {
+            setStatus('Failed to load languages', 'error');
+        }
+    }
+
+    function populateSelect(id, languages, selected) {
+        const el = document.getElementById(id);
+        el.innerHTML = '';
+        languages.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l;
+            opt.textContent = l.toUpperCase();
+            if (l === selected) opt.selected = true;
+            el.appendChild(opt);
+        });
+    }
+
+    async function start() {
+        const url    = document.getElementById('url').value.trim();
+        const source = document.getElementById('source').value;
+        const target = document.getElementById('target').value;
+
+        if (!url) {
+            setStatus('URL is required', 'error');
+            return;
+        }
+
+        setLoading(true);
+        setStatus('');
+
+        try {
+            const res = await fetch('/stream/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url,
+                    sourceLanguage: source,
+                    targetLanguage: target
+                })
+            });
+
+            if (res.ok) {
+                setStatus('Stream started successfully', 'success');
+            } else {
+                const text = await res.text();
+                setStatus(text || 'Failed to start stream', 'error');
+                setLoading(false);
+            }
+        } catch {
+            setStatus('Connection error', 'error');
+            setLoading(false);
+        }
+    }
+
+    function setLoading(on) {
+        document.getElementById('btn').disabled = on;
+        document.getElementById('spinner').classList.toggle('visible', on);
+    }
+
+    function setStatus(msg, type = '') {
+        const el = document.getElementById('status');
+        el.textContent = msg;
+        el.className = type;
+    }
+
+    document.getElementById('url').addEventListener('keydown', e => {
+        if (e.key === 'Enter') start();
+    });
+
+    loadLanguages();
+</script>
+</body>
+</html>

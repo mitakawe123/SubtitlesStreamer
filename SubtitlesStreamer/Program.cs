@@ -24,5 +24,9 @@ var app = builder.Build();
 
 app.RegisterMiddlewares();
 app.RegisterStreamEndpoints();
+app.RegisterLanguageEndpoints();
+app.UseStaticFiles();
+app.MapGet("/", () => Results.Content(
+    File.ReadAllText("wwwroot/index.html"), "text/html"));
 
 app.Run();
