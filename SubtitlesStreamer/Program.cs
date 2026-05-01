@@ -18,7 +18,7 @@ builder.Services
 
 builder.Services
     .AddLibreTranslate(builder.Configuration)
-    .AddFasterWhisper(builder.Configuration);
+    .AddGroq(builder.Configuration);
 
 var app = builder.Build();
 

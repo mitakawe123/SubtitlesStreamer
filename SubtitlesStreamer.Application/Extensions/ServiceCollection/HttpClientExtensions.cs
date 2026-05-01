@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SubtitlesStreamer.Application.Background;
@@ -6,35 +7,33 @@ namespace SubtitlesStreamer.Application.Extensions.ServiceCollection;
 
 public static class HttpClientExtensions
 {
-    public static IServiceCollection AddLibreTranslate(
-        this IServiceCollection services,
-        IConfiguration configuration)
+    extension(IServiceCollection services)
     {
-        services.AddHostedService<DockerHostedService>();
+        public IServiceCollection AddLibreTranslate(IConfiguration configuration)
+        {
+            services.AddHostedService<DockerHostedService>();
 
-        services
-            .AddHttpClient("LibreTranslate", client =>
+            services
+                .AddHttpClient("LibreTranslate", client =>
+                {
+                    client.BaseAddress = new Uri(configuration["LibreTranslate:BaseUrl"] ?? "http://localhost:5000");
+                    client.Timeout = TimeSpan.FromSeconds(
+                        configuration.GetValue("LibreTranslate:TimeoutSeconds", 30));
+                });
+
+            return services;
+        }
+
+        public IServiceCollection AddGroq(IConfiguration configuration)
+        {
+            services.AddHttpClient("Groq", client =>
             {
-                client.BaseAddress = new Uri(configuration["LibreTranslate:BaseUrl"] ?? "http://localhost:5000");
-                client.Timeout = TimeSpan.FromSeconds(
-                    configuration.GetValue("LibreTranslate:TimeoutSeconds", 30));
+                client.BaseAddress = new Uri("https://api.groq.com");
+                client.DefaultRequestHeaders.Authorization = 
+                    new AuthenticationHeaderValue("Bearer", configuration["Groq:ApiKey"]);
             });
 
-        return services;
-    }
-    
-    public static IServiceCollection AddFasterWhisper(
-        this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        services.AddHttpClient("FasterWhisper", client =>
-        {
-            client.BaseAddress = new Uri(configuration["FasterWhisper:BaseUrl"]
-                                         ?? "http://localhost:8000");
-            client.Timeout = TimeSpan.FromSeconds(
-                configuration.GetValue("FasterWhisper:TimeoutSeconds", 300));
-        });
-
-        return services;
+            return services;
+        }
     }
 }

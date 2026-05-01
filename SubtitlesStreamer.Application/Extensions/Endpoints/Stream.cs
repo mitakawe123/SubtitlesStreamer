@@ -13,6 +13,7 @@ public static class StreamEndpoints
     public static void RegisterStreamEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/stream/start", HandleStreamStart);
+        return;
 
         static async Task<IResult> HandleStreamStart(
             [FromBody] StreamContext stream,

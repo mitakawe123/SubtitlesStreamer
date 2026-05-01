@@ -8,10 +8,9 @@ public static class Background
     public static IServiceCollection AddBackgroundServices(this IServiceCollection services)
     {
         return services
-            .AddHostedService<AudioProcessorJob>()
+            .AddHostedService<StreamInitializerJob>()
             .AddHostedService<AudioReaderJob>()
             .AddHostedService<AudioWriterJob>()
-            .AddHostedService<AggregationServiceJob>()
-            .AddHostedService<TranslationOrchestrator>();
+            .AddHostedService<TranslationJob>();
     }
 }

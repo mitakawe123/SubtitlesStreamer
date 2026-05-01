@@ -47,6 +47,9 @@ public class PlaywrightService : IPlaywrightService
         });
         await ClickConsentButtonAsync();
     }
+
+    public async Task InitPopupAsync() =>
+        await GetOrCreatePopupAsync();
     
     public async Task UpdateLiveTextAsync(string text)
     {
@@ -58,7 +61,7 @@ public class PlaywrightService : IPlaywrightService
           }
         """, text);
     }
-    public async Task CommitTextAsync(string text, int duration = 10_000)
+    public async Task CommitTextAsync(string text, int duration)
     {
         var popup = await GetOrCreatePopupAsync();
 
@@ -141,7 +144,7 @@ public class PlaywrightService : IPlaywrightService
                        showInstant(text);
                    },
 
-                   commit(text, duration = 10000) {
+                   commit(text, duration) {
                        showInstant(text);
 
                        fadeTimer = setTimeout(() => {

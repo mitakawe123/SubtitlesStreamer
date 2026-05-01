@@ -5,7 +5,7 @@ using SubtitlesStreamer.Domain.DTOs;
 
 namespace SubtitlesStreamer.Application.Background;
 
-public sealed class AudioProcessorJob(
+public sealed class StreamInitializerJob(
     ChannelReader<StreamContext> reader,
     ChannelWriter<LanguageContext> writer,
     IPlaywrightService playwrightService) : BackgroundService
@@ -20,6 +20,7 @@ public sealed class AudioProcessorJob(
         {
             await _playwrightService.InitializeAsync();
             await _playwrightService.OpenSiteAsync(streamContext.Url);
+            await _playwrightService.InitPopupAsync();
 
             await _writer.WriteAsync(new LanguageContext(streamContext.SourceLanguage, streamContext.TargetLanguage), stoppingToken);
         }

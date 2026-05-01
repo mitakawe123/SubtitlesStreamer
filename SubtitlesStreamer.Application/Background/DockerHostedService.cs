@@ -10,12 +10,23 @@ public sealed class DockerHostedService(
     IConfiguration configuration,
     ILogger<DockerHostedService> logger) : IHostedLifecycleService
 {
+    private static readonly IList<string> FasterWhisperEnv =
+    [
+        "WHISPER_MODEL_TTL=0",
+        "WHISPER_PRELOAD_MODEL=Systran/faster-whisper-tiny",
+        "WHISPER_COMPUTE_TYPE=int8",
+        "OMP_NUM_THREADS=4",
+        "WHISPER_INFERENCE_DEVICE=cpu"
+    ];
+    
     private const string LibreTranslateContainerName = "libretranslate";
     private const string LibreTranslateImageName = "libretranslate/libretranslate";
+    private const string LibreTranslateImageTag = "latest";
 
     private const string FasterWhisperContainerName = "faster-whisper";
     private const string FasterWhisperImageName = "fedirz/faster-whisper-server";
-
+    private const string FasterWhisperImageTag = "latest-cpu";
+    
     private readonly DockerClient _docker = CreateDockerClient();
 
     private string _loadOnly = string.Empty;
@@ -34,7 +45,9 @@ public sealed class DockerHostedService(
             EnsureContainerAsync(
                 LibreTranslateContainerName,
                 LibreTranslateImageName,
+                imageTag: LibreTranslateImageTag,
                 cmd: ["--load-only", _loadOnly],
+                env: [],
                 portBindings: new Dictionary<string, IList<PortBinding>>
                 {
                     ["5000/tcp"] = [new PortBinding { HostPort = "5000" }]
@@ -48,7 +61,9 @@ public sealed class DockerHostedService(
             EnsureContainerAsync(
                 FasterWhisperContainerName,
                 FasterWhisperImageName,
+                imageTag: FasterWhisperImageTag,
                 cmd: [],
+                env: FasterWhisperEnv,
                 portBindings: new Dictionary<string, IList<PortBinding>>
                 {
                     ["8000/tcp"] = [new PortBinding { HostPort = "8000" }]
@@ -64,13 +79,15 @@ public sealed class DockerHostedService(
     private async Task EnsureContainerAsync(
         string containerName,
         string imageName,
+        string imageTag,
         IList<string> cmd,
+        IList<string> env,
         Dictionary<string, IList<PortBinding>> portBindings,
         Dictionary<string, EmptyStruct> exposedPorts,
         string healthUrl,
         CancellationToken token)
     {
-        await EnsureImageExistsAsync(imageName, token);
+        await EnsureImageExistsAsync(imageName, imageTag, token);
 
         var containerId = await GetExistingContainerIdAsync(containerName, token);
         logger.LogInformation("[{Container}] Existing container id: {ContainerId}", containerName, containerId ?? "null");
@@ -78,26 +95,26 @@ public sealed class DockerHostedService(
         if (containerId is not null)
             await EnsureContainerRunningAsync(containerName, containerId, healthUrl, token);
         else
-            await CreateAndStartContainerAsync(containerName, imageName, cmd, portBindings, exposedPorts, healthUrl, token);
+            await CreateAndStartContainerAsync(containerName, imageName, imageTag, cmd, env, portBindings, exposedPorts, healthUrl, token);
     }
 
-    private async Task EnsureImageExistsAsync(string imageName, CancellationToken token)
+    private async Task EnsureImageExistsAsync(string imageName, string tag, CancellationToken token)
     {
         var images = await _docker.Images.ListImagesAsync(new ImagesListParameters
         {
             Filters = new Dictionary<string, IDictionary<string, bool>>
             {
-                ["reference"] = new Dictionary<string, bool> { [imageName] = true }
+                ["reference"] = new Dictionary<string, bool> { [$"{imageName}:{tag}"] = true }
             }
         }, token);
 
         if (images.Count != 0)
             return;
 
-        logger.LogInformation("Pulling {Image} image...", imageName);
+        logger.LogInformation("Pulling {Image}:{Tag} image...", imageName, tag);
 
         await _docker.Images.CreateImageAsync(
-            new ImagesCreateParameters { FromImage = imageName, Tag = "latest" },
+            new ImagesCreateParameters { FromImage = imageName, Tag = tag },
             null,
             new Progress<JSONMessage>(m => logger.LogDebug("Docker pull: {Status}", m.Status)),
             token);
@@ -150,7 +167,9 @@ public sealed class DockerHostedService(
     private async Task CreateAndStartContainerAsync(
         string containerName,
         string imageName,
+        string imageTag,
         IList<string> cmd,
+        IList<string> env,
         Dictionary<string, IList<PortBinding>> portBindings,
         Dictionary<string, EmptyStruct> exposedPorts,
         string healthUrl,
@@ -161,8 +180,9 @@ public sealed class DockerHostedService(
         var response = await _docker.Containers.CreateContainerAsync(new CreateContainerParameters
         {
             Name = containerName,
-            Image = imageName,
+            Image = $"{imageName}:{imageTag}",
             Cmd = cmd,
+            Env = env,
             HostConfig = new HostConfig
             {
                 PortBindings = portBindings,

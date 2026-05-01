@@ -11,11 +11,6 @@ public static class StreamChannels
         var streamContextChannel = Channel.CreateUnbounded<StreamContext>();
         var languageContextChannel = Channel.CreateUnbounded<LanguageContext>();
         var audioChannel = Channel.CreateUnbounded<AudioDto>();
-        var translationResult = Channel.CreateBounded<TranslationResult>(options: new BoundedChannelOptions(100)
-        {
-            Capacity = 20,
-            FullMode = BoundedChannelFullMode.DropOldest,
-        });
         var translationTask = Channel.CreateBounded<TranslationTask>(options: new BoundedChannelOptions(100)
         {
             Capacity = 20,
@@ -36,11 +31,6 @@ public static class StreamChannels
             .AddSingleton(audioChannel)
             .AddSingleton(audioChannel.Reader)
             .AddSingleton(audioChannel.Writer);
-
-        services
-            .AddSingleton(translationResult)
-            .AddSingleton(translationResult.Reader)
-            .AddSingleton(translationResult.Writer);
         
         services
             .AddSingleton(translationTask)

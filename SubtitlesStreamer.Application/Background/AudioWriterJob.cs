@@ -23,14 +23,15 @@ public sealed class AudioWriterJob(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var attempt = 0;
-        await using var stream = _ffmpegProcessorService.InitBaseStream();
         var byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
-
+        await Task.Delay(5_000, stoppingToken); //test
+        
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 attempt = 0; // reset on successful stream init
+                await using var stream = _ffmpegProcessorService.InitBaseStream();
 
                 while (!stoppingToken.IsCancellationRequested)
                 {

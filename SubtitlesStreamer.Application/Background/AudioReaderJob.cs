@@ -18,51 +18,43 @@ public sealed class AudioReaderJob(
     private readonly ChannelReader<AudioDto> _audioReader = audioReader;
     private readonly ChannelWriter<TranslationTask> _taskWriter = taskWriter;
     private readonly ChannelReader<LanguageContext> _languageReader = languageReader;
-    private readonly HttpClient _http = httpClientFactory.CreateClient("FasterWhisper");
+    private readonly HttpClient _http = httpClientFactory.CreateClient("Groq");
     private readonly ILogger<AudioReaderJob> _logger = logger;
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        ulong seq = 0;
-
-        await foreach (var languageContext in _languageReader.ReadAllAsync(stoppingToken))
+        var languageContext = await _languageReader.ReadAsync(stoppingToken);
+        await foreach (var audio in _audioReader.ReadAllAsync(stoppingToken))
         {
-            await foreach (var audio in _audioReader.ReadAllAsync(stoppingToken))
+            try
             {
-                try
-                {
-                    var text = await TranscribeAsync(audio, languageContext.SourceLanguage, stoppingToken);
+                var text = await TranscribeAsync(audio, languageContext.SourceLanguage, stoppingToken);
 
-                    if (string.IsNullOrWhiteSpace(text) ||
-                        text.Equals(" [BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
-                        continue;
+                if (string.IsNullOrWhiteSpace(text) ||
+                    text.Equals(" [BLANK_AUDIO]", StringComparison.OrdinalIgnoreCase))
+                    continue;
 
-                    await _taskWriter.WriteAsync(
-                        new TranslationTask(
-                            SequenceId: seq++,
-                            Text: text,
-                            LanguageContext: languageContext),
-                        stoppingToken
-                    );
-                }  
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "[AUDIO READER] Transcription failed, skipping chunk.");
-                }
+                await _taskWriter.WriteAsync(
+                    new TranslationTask(
+                        Text: text,
+                        LanguageContext: languageContext),
+                    stoppingToken
+                );
+            }  
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[AUDIO READER] Transcription failed, skipping chunk.");
             }
         }
 
         _taskWriter.Complete();
     }
     
-    private async Task<string> TranscribeAsync(
-        AudioDto audio,
-        string language,
-        CancellationToken token)
+    private async Task<string?> TranscribeAsync(AudioDto audio, string language, CancellationToken token)
     {
         using var content = new MultipartFormDataContent();
 
@@ -70,14 +62,14 @@ public sealed class AudioReaderJob(
         var fileContent = new ByteArrayContent(wavBytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
         content.Add(fileContent, "file", "audio.wav");
-        content.Add(new StringContent("Systran/faster-whisper-small"), "model");
+        content.Add(new StringContent("whisper-large-v3-turbo"), "model");
         content.Add(new StringContent(language), "language");
 
-        var response = await _http.PostAsync("/v1/audio/transcriptions", content, token);
+        var response = await _http.PostAsync("/openai/v1/audio/transcriptions", content, token);
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<TranscriptionResponse>(token);
-        return result?.Text ?? string.Empty;
+        return result?.Text;
     }
 
     // FFmpeg writes the WAV header once at the very beginning of the pipe with size=0 (because it doesn't know the final size). Then it streams raw PCM after that.
@@ -95,12 +87,12 @@ public sealed class AudioReaderJob(
     // faster-whisper gets a valid complete WAV every time
     // 
     // There's no workaround — this is a fundamental limitation of the WAV container format.
-    private static byte[] BuildWav(byte[] s16leBytes, int sampleRate, int channels)
+    private static byte[] BuildWav(byte[] s16LeBytes, int sampleRate, int channels)
     {
         using var ms = new MemoryStream();
         using var writer = new BinaryWriter(ms);
 
-        var dataSize = s16leBytes.Length;
+        var dataSize = s16LeBytes.Length;
         var byteRate = sampleRate * channels * sizeof(short);
 
         writer.Write("RIFF"u8);
@@ -116,7 +108,7 @@ public sealed class AudioReaderJob(
         writer.Write((short)16);
         writer.Write("data"u8);
         writer.Write(dataSize);
-        writer.Write(s16leBytes);
+        writer.Write(s16LeBytes);
 
         return ms.ToArray();
     }
