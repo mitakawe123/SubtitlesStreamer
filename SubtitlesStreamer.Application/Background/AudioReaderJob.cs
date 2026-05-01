@@ -62,7 +62,7 @@ public sealed class AudioReaderJob(
         var fileContent = new ByteArrayContent(wavBytes);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
         content.Add(fileContent, "file", "audio.wav");
-        content.Add(new StringContent("whisper-large-v3-turbo"), "model");
+        content.Add(new StringContent("whisper-large-v3"), "model");
         content.Add(new StringContent(language), "language");
 
         var response = await _http.PostAsync("/openai/v1/audio/transcriptions", content, token);

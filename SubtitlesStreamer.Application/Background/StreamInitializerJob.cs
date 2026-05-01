@@ -20,7 +20,6 @@ public sealed class StreamInitializerJob(
         {
             await _playwrightService.InitializeAsync();
             await _playwrightService.OpenSiteAsync(streamContext.Url);
-            await _playwrightService.InitPopupAsync();
 
             await _writer.WriteAsync(new LanguageContext(streamContext.SourceLanguage, streamContext.TargetLanguage), stoppingToken);
         }

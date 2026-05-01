@@ -29,7 +29,7 @@ public sealed class TranslationJob(
             var response = await _http.PostAsJsonAsync("/translate", new
             {
                 q = task.Text,
-                source = task.LanguageContext.SourceLanguage,
+                source = task.LanguageContext.SourceLanguage ?? "auto",
                 target = task.LanguageContext.TargetLanguage,
                 format = "text"
             }, stoppingToken);
@@ -65,7 +65,7 @@ public sealed class TranslationJob(
         _textBuffer.Clear();
 
         if (!string.IsNullOrWhiteSpace(text))
-            await _playwright.CommitTextAsync(text, 300);
+            await _playwright.CommitTextAsync(text, duration: 4000);
     }
 
     private sealed record LibreTranslateResponse(

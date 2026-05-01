@@ -6,8 +6,6 @@ public interface IPlaywrightService
     
     Task OpenSiteAsync(string url);
 
-    Task InitPopupAsync();
-    
     Task UpdateLiveTextAsync(string text);
     
     Task CommitTextAsync(string text, int duration);

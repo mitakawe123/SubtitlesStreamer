@@ -24,7 +24,6 @@ public sealed class AudioWriterJob(
     {
         var attempt = 0;
         var byteBuffer = ArrayPool<byte>.Shared.Rent(ChunkBytes);
-        await Task.Delay(5_000, stoppingToken); //test
         
         while (!stoppingToken.IsCancellationRequested)
         {

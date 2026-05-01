@@ -10,22 +10,9 @@ public sealed class DockerHostedService(
     IConfiguration configuration,
     ILogger<DockerHostedService> logger) : IHostedLifecycleService
 {
-    private static readonly IList<string> FasterWhisperEnv =
-    [
-        "WHISPER_MODEL_TTL=0",
-        "WHISPER_PRELOAD_MODEL=Systran/faster-whisper-tiny",
-        "WHISPER_COMPUTE_TYPE=int8",
-        "OMP_NUM_THREADS=4",
-        "WHISPER_INFERENCE_DEVICE=cpu"
-    ];
-    
     private const string LibreTranslateContainerName = "libretranslate";
     private const string LibreTranslateImageName = "libretranslate/libretranslate";
     private const string LibreTranslateImageTag = "latest";
-
-    private const string FasterWhisperContainerName = "faster-whisper";
-    private const string FasterWhisperImageName = "fedirz/faster-whisper-server";
-    private const string FasterWhisperImageTag = "latest-cpu";
     
     private readonly DockerClient _docker = CreateDockerClient();
 
@@ -57,22 +44,6 @@ public sealed class DockerHostedService(
                     ["5000/tcp"] = default
                 },
                 healthUrl: "http://localhost:5000/languages",
-                token),
-            EnsureContainerAsync(
-                FasterWhisperContainerName,
-                FasterWhisperImageName,
-                imageTag: FasterWhisperImageTag,
-                cmd: [],
-                env: FasterWhisperEnv,
-                portBindings: new Dictionary<string, IList<PortBinding>>
-                {
-                    ["8000/tcp"] = [new PortBinding { HostPort = "8000" }]
-                },
-                exposedPorts: new Dictionary<string, EmptyStruct>
-                {
-                    ["8000/tcp"] = default
-                },
-                healthUrl: "http://localhost:8000/health",
                 token));
     }
 
