@@ -22,8 +22,7 @@ public class FfmpegProcessorService : IFfmpegProcessorService, IAsyncDisposable
 
         _ffmpeg = Process.Start(ffmpegInfo)
                   ?? throw new InvalidOperationException("Failed to start ffmpeg");
-
-        // Drain stderr on a background thread to prevent blocking
+        
         _ = Task.Run(() => _ffmpeg.StandardError.ReadToEndAsync());
 
         return _ffmpeg.StandardOutput.BaseStream;
@@ -66,8 +65,14 @@ public class FfmpegProcessorService : IFfmpegProcessorService, IAsyncDisposable
 
         if (!_ffmpeg.HasExited)
         {
-            _ffmpeg.Kill();
-            await _ffmpeg.WaitForExitAsync();
+            _ffmpeg.StandardInput.Close();
+        
+            var exited = await Task.WhenAny(
+                _ffmpeg.WaitForExitAsync(),
+                Task.Delay(2000));
+        
+            if (!_ffmpeg.HasExited)
+                _ffmpeg.Kill();
         }
 
         _ffmpeg.Dispose();

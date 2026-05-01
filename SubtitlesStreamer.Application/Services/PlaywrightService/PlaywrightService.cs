@@ -91,7 +91,7 @@ public class PlaywrightService : IPlaywrightService
                     padding: 10px 24px;
                     border-radius: 8px;
                     z-index: 2147483647;
-                    max-width: 80%;
+                    max-width: 100%;
                     text-align: center;
                     pointer-events: none;
                     opacity: 1;
