@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace SubtitlesStreamer.Application.Services.FfmpegProcessor;
 
-public class FfmpegProcessorService : IFfmpegProcessorService, IAsyncDisposable
+public class FfmpegProcessorService : IFfmpegProcessorService, IDisposable
 {
     private Process? _ffmpeg;
     
@@ -59,22 +59,11 @@ public class FfmpegProcessorService : IFfmpegProcessorService, IAsyncDisposable
     }
 
     
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
-        if (_ffmpeg is null) return;
-
-        if (!_ffmpeg.HasExited)
-        {
-            _ffmpeg.StandardInput.Close();
+        if (_ffmpeg is null) 
+            return;
         
-            var exited = await Task.WhenAny(
-                _ffmpeg.WaitForExitAsync(),
-                Task.Delay(2000));
-        
-            if (!_ffmpeg.HasExited)
-                _ffmpeg.Kill();
-        }
-
         _ffmpeg.Dispose();
         _ffmpeg = null;
     }
