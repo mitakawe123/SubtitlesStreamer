@@ -13,10 +13,8 @@ public sealed class DockerHostedService(
     private const string LibreTranslateContainerName = "libretranslate";
     private const string LibreTranslateImageName = "libretranslate/libretranslate";
     private const string LibreTranslateImageTag = "latest";
-    
-    private readonly DockerClient _docker = CreateDockerClient();
 
-    private string _loadOnly = string.Empty;
+    private readonly DockerClient _docker = CreateDockerClient();
 
     public async Task StartAsync(CancellationToken token)
     {
@@ -24,7 +22,7 @@ public sealed class DockerHostedService(
             .GetSection("StreamingOptions:SupportedLanguages")
             .Get<string[]>() ?? ["en"];
 
-        _loadOnly = string.Join(",", languages);
+        var loadOnly = string.Join(",", languages);
 
         logger.LogInformation("Ensuring all containers are ready before app starts...");
 
@@ -33,7 +31,7 @@ public sealed class DockerHostedService(
                 LibreTranslateContainerName,
                 LibreTranslateImageName,
                 imageTag: LibreTranslateImageTag,
-                cmd: ["--load-only", _loadOnly],
+                cmd: ["--load-only", loadOnly],
                 env: [],
                 portBindings: new Dictionary<string, IList<PortBinding>>
                 {
@@ -64,9 +62,34 @@ public sealed class DockerHostedService(
         logger.LogInformation("[{Container}] Existing container id: {ContainerId}", containerName, containerId ?? "null");
 
         if (containerId is not null)
-            await EnsureContainerRunningAsync(containerName, containerId, healthUrl, token);
-        else
-            await CreateAndStartContainerAsync(containerName, imageName, imageTag, cmd, env, portBindings, exposedPorts, healthUrl, token);
+        {
+            ContainerInspectResponse container;
+
+            try
+            {
+                container = await _docker.Containers.InspectContainerAsync(containerId, token);
+            }
+            catch (DockerContainerNotFoundException)
+            {
+                logger.LogWarning("[{Container}] Not found during inspect, will recreate.", containerName);
+                await CreateAndStartContainerAsync(containerName, imageName, imageTag, cmd, env, portBindings, exposedPorts, healthUrl, token);
+                return;
+            }
+
+            if (container.State.Running)
+            {
+                logger.LogInformation("[{Container}] Already running", containerName);
+                await WaitUntilReadyAsync(containerName, healthUrl, token);
+                return;
+            }
+
+            // Stopped container — remove and recreate to avoid stale port binding
+            logger.LogInformation("[{Container}] Found stopped — removing to recreate...", containerName);
+            await _docker.Containers.RemoveContainerAsync(containerId,
+                new ContainerRemoveParameters { Force = true }, token);
+        }
+
+        await CreateAndStartContainerAsync(containerName, imageName, imageTag, cmd, env, portBindings, exposedPorts, healthUrl, token);
     }
 
     private async Task EnsureImageExistsAsync(string imageName, string tag, CancellationToken token)
@@ -103,36 +126,6 @@ public sealed class DockerHostedService(
         }, token);
 
         return containers.FirstOrDefault()?.ID;
-    }
-
-    private async Task EnsureContainerRunningAsync(
-        string containerName,
-        string containerId,
-        string healthUrl,
-        CancellationToken token)
-    {
-        ContainerInspectResponse container;
-
-        try
-        {
-            container = await _docker.Containers.InspectContainerAsync(containerId, token);
-        }
-        catch (DockerContainerNotFoundException)
-        {
-            logger.LogWarning("[{Container}] Not found, will recreate.", containerName);
-            return;
-        }
-
-        if (container.State.Running)
-        {
-            logger.LogInformation("[{Container}] Already running", containerName);
-            await WaitUntilReadyAsync(containerName, healthUrl, token);
-            return;
-        }
-
-        logger.LogInformation("[{Container}] Starting existing container...", containerName);
-        await _docker.Containers.StartContainerAsync(containerId, new ContainerStartParameters(), token);
-        await WaitUntilReadyAsync(containerName, healthUrl, token);
     }
 
     private async Task CreateAndStartContainerAsync(
@@ -217,9 +210,14 @@ public sealed class DockerHostedService(
     public Task StoppingAsync(CancellationToken token) => Task.CompletedTask;
     public Task StoppedAsync(CancellationToken token) => Task.CompletedTask;
 
-    public Task StopAsync(CancellationToken token)
+    public async Task StopAsync(CancellationToken token)
     {
+        var containerId = await GetExistingContainerIdAsync(LibreTranslateContainerName, token);
+        if (containerId is not null)
+        {
+            await _docker.Containers.StopContainerAsync(containerId, 
+                new ContainerStopParameters { WaitBeforeKillSeconds = 5 }, token);
+        }
         _docker.Dispose();
-        return Task.CompletedTask;
     }
 }
